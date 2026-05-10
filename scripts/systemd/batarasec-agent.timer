@@ -1,0 +1,12 @@
+[Unit]
+Description=BataraSec Agent — scan every 6 hours
+Requires=batarasec-agent.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=6h
+Unit=batarasec-agent.service
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

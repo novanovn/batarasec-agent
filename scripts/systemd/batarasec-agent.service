@@ -1,0 +1,16 @@
+[Unit]
+Description=BataraSec Security Scanning Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/batarasec-agent scan
+User=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=batarasec-agent
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

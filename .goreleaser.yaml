@@ -1,0 +1,34 @@
+version: 2
+
+builds:
+  - id: batarasec-agent
+    main: ./cmd/batarasec-agent
+    binary: batarasec-agent
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/batarasec/agent/internal/version.Version={{.Version}}
+      - -X github.com/batarasec/agent/internal/version.Commit={{.Commit}}
+      - -X github.com/batarasec/agent/internal/version.BuildTime={{.Date}}
+
+archives:
+  - format: binary
+    name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  draft: false
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

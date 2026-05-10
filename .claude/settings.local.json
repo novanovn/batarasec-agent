@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod *)",
+      "Bash(Remove-Item -Recurse -Force cmd, internal\\\\api, internal\\\\parser, internal\\\\cache, internal\\\\scanner, internal\\\\vulndb, internal\\\\config, internal\\\\version, internal\\\\queue, systemd, install.sh, main.go -ErrorAction SilentlyContinue)",
+      "Bash(go get *)",
+      "Bash(rtk go *)",
+      "Bash(rtk git *)"
+    ]
+  }
+}
