@@ -90,10 +90,29 @@ func parseGoMod(filePath string) ([]Package, error) {
 		// Single-line require: require module version
 		if strings.HasPrefix(line, "require ") {
 			line = strings.TrimPrefix(line, "require ")
-			inRequire = false
+			// Process the single-line require entry
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			// Skip indirect deps (they're covered by go.sum).
+			if isIndirectRequire(fields) {
+				continue
+			}
+			ver := strings.TrimPrefix(fields[1], "v")
+			if idx := strings.Index(ver, "+"); idx != -1 {
+				ver = ver[:idx]
+			}
+			pkgs = append(pkgs, Package{
+				Name:      fields[0],
+				Version:   ver,
+				Ecosystem: "go",
+				FilePath:  filePath,
+			})
+			continue
 		}
 
-		if !inRequire && !strings.HasPrefix(line, "require ") {
+		if !inRequire {
 			continue
 		}
 
@@ -103,7 +122,7 @@ func parseGoMod(filePath string) ([]Package, error) {
 		}
 
 		// Skip indirect deps (they're covered by go.sum).
-		if len(fields) >= 3 && fields[2] == "// indirect" {
+		if isIndirectRequire(fields) {
 			continue
 		}
 
@@ -121,4 +140,13 @@ func parseGoMod(filePath string) ([]Package, error) {
 	}
 
 	return pkgs, scanner.Err()
+}
+
+func isIndirectRequire(fields []string) bool {
+	for i := 2; i < len(fields)-1; i++ {
+		if fields[i] == "//" && fields[i+1] == "indirect" {
+			return true
+		}
+	}
+	return false
 }
