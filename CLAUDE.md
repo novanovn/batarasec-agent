@@ -93,3 +93,65 @@
   - bbolt file tidak boleh diakses concurrent dari dua proses
   - Gunakan `context` untuk semua operasi network (timeout, cancellation)
   - Test coverage minimal untuk parser dan matching engin
+
+## Autonomous Work Policy
+Kerjakan semua task dari TODO.md tanpa minta permission untuk:
+- Read/Write/Edit file di dalam repo ini
+- Menjalankan `go build`, `go test`, `go mod tidy`
+- Membuat file dan folder baru sesuai struktur yang sudah didefinisikan
+- Menjalankan command yang bersifat read-only (ls, cat, grep, git status, dll)
+
+Hanya minta konfirmasi untuk:
+- `git push` ke remote
+- Operasi yang menghapus file secara permanen
+- Sesuatu yang jelas di luar scope TODO.md
+
+## Git Workflow — Multi-Agent Safety
+> Wajib diikuti setiap agent/model sebelum mulai kerja. Berlaku untuk BataraSec (platform) dan batarasec-agent.
+
+1. **Sync dulu** — `git fetch origin && git pull --rebase origin feat/next-features`
+2. **Cek status** — `git status --short` — pastikan tidak ada file A/M/??
+3. **Kerja** — edit file sesuai task
+4. **Test sukses** — baru commit (`git add <file-spesifik>` saja, bukan `git add -A`)
+5. **Push** — `git push origin feat/next-features`
+6. **Kalau conflict** — jangan force push. Tanya user dulu.
+7. **Jangan copy/salin repo** — selalu clone fresh atau git pull
+
+  ## Known Issues / Tech Debt
+  > Hasil code review oleh Kiro — 2026-05-11. Di-verify ulang 2026-05-11.
+
+  ### ✅ Bug P1 — `parseGoMod` single-line require silently dropped — FIXED
+  - **File**: `internal/scanner/gomod.go`
+  - **Fix**: Single-line require sekarang di-handle di blok tersendiri dengan `continue`,
+    tidak lagi jatuh ke guard `if !inRequire`.
+
+  ### ✅ Bug P1 — Cache di-mark scanned meski send gagal sebagian — FIXED
+  - **File**: `cmd/batarasec-agent/scan.go`
+  - **Fix**: `MarkScanned` sekarang hanya dipanggil di dalam blok `else` (no findings)
+    atau setelah `sendFindings` sukses. Jika send gagal, file tidak di-mark.
+
+  ### ✅ Security P2 — Tidak ada size limit saat download vuln DB — FIXED
+  - **File**: `internal/client/client.go`, fungsi `DownloadVulnDBPack`
+  - **Fix**: `io.Copy(f, io.LimitReader(resp.Body, 500<<20))` — cap 500 MB.
+
+  ### ✅ Security P2 — Queue entry ID bisa collision — FIXED
+  - **File**: `internal/queue/queue.go`, fungsi `Push`
+  - **Fix**: ID sekarang `fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())`.
+
+  ### ✅ Logic P2 — Duplicate findings dari go.mod + go.sum — FIXED
+  - **File**: `cmd/batarasec-agent/scan.go`
+  - **Fix**: Fungsi `deduplicateFindings` ditambahkan, dedup by `cve_id|package_name|version`
+    sebelum findings dikirim.
+
+  ### ✅ Style P3 — `dirOf` reimplements `filepath.Dir` — FIXED
+  - **File**: `cmd/batarasec-agent/scan.go`
+  - **Fix**: `dirOf` dihapus, diganti `filepath.Dir(cfg.CachePath)`. Import `path/filepath` ditambahkan.
+
+  ### ✅ Style P3 — Tidak ada warning saat TLS verify dinonaktifkan — FIXED
+  - **File**: `internal/client/client.go`, fungsi `New`
+  - **Fix**: `zap.L().Warn("TLS verification disabled - connections may be insecure")` ditambahkan.
+
+  ### ℹ️ Info — Tidak ada unit test (masih open)
+  - **Masalah**: Belum ada file `*_test.go`. Parser dan vuln matching engine adalah bagian
+    paling kritis dan paling mudah ditest.
+  - **Prioritas test pertama**: `internal/scanner/` (gomod, npm, python) dan `internal/vulndb/`.
