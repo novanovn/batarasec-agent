@@ -80,7 +80,7 @@
 - **Depends on**: /agent/v1/ endpoints
 - **Scope**: Worker di platform: dequeue dari Redis, fingerprint findings, batch upsert ke PostgreSQL `vulnerabilities` table. Handle dedup via `ON CONFLICT DO NOTHING`.
 - **Done when**: Findings dari agent tampil di dashboard BataraSec
-- **Commit**: `34eaf03` (`BataraSec`)
+- **Commit**: `34eaf03` (`BataraSec` async queue), `3beb990` (`BataraSec` TODO/audit update), `450806c` (`batarasec-agent` TODO sync)
 - **Verified**: staging E2E 2026-05-13: `scan/:jobId/push` returned `202 { accepted: 1, queued: true }`, `scan/:jobId/done` returned `202 { ok: true, queued: true }`, Redis queues drained to 0, worker inserted 1 finding and completed scan job.
 - **Evidence**: `apps/api/src/services/agentQueue.ts`, `apps/api/src/workers/agentWorker.ts`, `apps/api/src/index.ts`, `apps/api/src/routes/agentV1.ts`
 
@@ -101,7 +101,7 @@
 - **Est**: ~3 jam
 - **Scope**: Di repo BataraSec. Download OSV.dev `all.zip` per ecosystem, parse menjadi `npm.json.gz`, `go.json.gz`, `python.json.gz`, `packagist.json.gz`, serve via `GET /api/agent/v1/vuln-db/pack?eco=npm|go|python|packagist`. Agent tidak query internet langsung.
 - **Done when**: Platform serve vuln DB pack; agent bisa download dan match CVEs
-- **Commit**: `69f7008` (`BataraSec` persistence follow-up)
+- **Commit**: `69f7008` (`BataraSec` persistence fix), `61ca5db` (`BataraSec` verification TODO/audit update), `450806c` (`batarasec-agent` TODO sync)
 - **Verified**: staging 2026-05-13: admin status pack sizes > 0 for npm/go/python/packagist; agent JWT `GET /api/agent/v1/vuln-db/pack?eco=npm` returned `200 application/gzip`; API force-recreate kept packs via `vulndb_data` and logged `Packs exist: true`.
 - **Evidence**: `apps/api/src/services/osvDbSync.ts`, `docs/VULN_DB_SYNC.md`, `apps/api/src/routes/agentV1.ts`, `docker-compose.full.yml`
 
