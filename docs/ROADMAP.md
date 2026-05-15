@@ -1,0 +1,243 @@
+# batarasec-agent — Roadmap
+
+> Last updated: 2026-05-11
+
+---
+
+## Latar Belakang
+
+Agent ini dibuat untuk mengakomodir customer BataraSec yang **belum mengimplementasi CI/CD pipeline**. Banyak customer — terutama di Asia Tenggara — masih deploy aplikasi langsung ke server (FTP, rsync, manual upload) tanpa GitLab CI, GitHub Actions, atau Jenkins.
+
+Tanpa agent, mereka tidak bisa menikmati security scanning otomatis. Agent menggantikan fungsi pipeline tersebut.
+
+**Ke depan**, agent akan berkembang menjadi **VM Security Monitoring** — tidak hanya scan dependency, tapi juga monitor kondisi server secara keseluruhan.
+
+---
+
+## Phase 1 — CI/CD Replacement
+
+**Goal**: Setara dengan apa yang bisa dilakukan CI/CD pipeline security scanning  
+**Status**: Core dependency scan path done/verified (CLI skeleton, parsers, bbolt delta cache); extended modules remain roadmap
+**Verified**: 2026-05-13 `go run ./cmd/batarasec-agent scan --dry-run` and `go test ./...` pass. Evidence: `TODO.md` Phase 1 Core Agent.
+
+### Modules
+
+#### dependency_scan ✅ Done
+Scan manifest files untuk CVE di dependencies.
+
+| File | Ecosystem | Status |
+|------|-----------|--------|
+| `package-lock.json` v1/v2/v3 | npm | ✅ |
+| `go.sum` + `go.mod` | Go | ✅ |
+| `requirements.txt`, `Pipfile.lock`, `poetry.lock` | Python | ✅ |
+| `composer.lock` | PHP/Packagist | ⏳ Coming soon |
+
+Data source: **BataraSec Vulnerability Intelligence** (OSV.dev + Grype-DB + NVD, di-aggregate di platform). Agent tidak query internet langsung — download pack dari platform.
+
+#### hardening_lite ⏳ Coming soon
+15 CIS benchmark checks — cek konfigurasi server.
+
+| Rule | Check | Severity |
+|------|-------|----------|
+| BSEC-H-001 | SSH PermitRootLogin disabled | HIGH |
+| BSEC-H-002 | SSH PasswordAuthentication disabled | HIGH |
+| BSEC-H-003 | Firewall enabled (ufw/firewalld/iptables) | HIGH |
+| BSEC-H-004 | MAC enforcing (SELinux/AppArmor) | MEDIUM |
+| BSEC-H-005 | /etc/shadow permissions (0600 or less) | CRITICAL |
+| BSEC-H-006 | Single UID 0 account | CRITICAL |
+| BSEC-H-007 | No empty passwords | CRITICAL |
+| BSEC-H-008 | No world-writable files (outside /tmp) | MEDIUM |
+| BSEC-H-009 | Auto security updates enabled | MEDIUM |
+| BSEC-H-010 | auditd running | MEDIUM |
+| BSEC-H-011 | Time sync active | LOW |
+| BSEC-H-012 | Sudo NOPASSWD audit | MEDIUM |
+| BSEC-H-013 | DB ports not exposed (3306, 5432, 6379, 27017) | HIGH |
+| BSEC-H-014 | Pending security updates count | MEDIUM/HIGH |
+| BSEC-H-015 | Docker socket permissions | HIGH |
+
+#### secret_detection ⏳ Coming soon
+Scan file untuk hardcoded credentials — salah satu root cause breach terbesar.
+
+Deteksi:
+- Hardcoded passwords (`password = "Admin1234"`)
+- API keys (`api_key = "sk-proj-..."`)
+- AWS credentials (`AKIA...`)
+- Private keys (`-----BEGIN RSA PRIVATE KEY`)
+- Database URLs dengan credentials (`mysql://user:pass@host`)
+- JWT secrets, OAuth tokens
+
+Implementasi: regex patterns + entropy analysis. Native Go, zero dependency.  
+**Privacy**: Nilai secret tidak pernah dikirim ke platform — hanya path, line number, dan masked value.
+
+#### exposed_files ⏳ Coming soon
+Cek file berbahaya yang bisa diakses publik di web server.
+
+- `.env` di public directory
+- `.git/` directory exposed
+- `*.bak`, `*.old`, `*.backup` files
+- `phpinfo.php`, `info.php`
+- `wp-config.php` world-readable
+- `config.php.bak`
+
+#### ssl_expiry ⏳ Coming soon
+Cek sertifikat SSL yang akan expired.
+
+- Scan `/etc/letsencrypt/live/`, `/etc/nginx/ssl/`, `/etc/ssl/`
+- Alert kalau cert expired atau akan expired < 30 hari
+- Parse dengan Go crypto library — zero dependency
+
+#### security_headers ⏳ Coming soon
+Basic DAST — cek HTTP security headers dari localhost.
+
+- `Strict-Transport-Security` (HSTS)
+- `Content-Security-Policy`
+- `X-Frame-Options`
+- `X-Content-Type-Options`
+- `Server` header (version disclosure)
+
+---
+
+## Phase 2 — VM Security Monitoring
+
+**Goal**: Detect intrusion, perubahan mencurigakan, aktivitas anomali  
+**Status**: Backlog — setelah Phase 1 stable
+
+### Modules Baru
+
+#### file_watcher
+File Integrity Monitoring (FIM) — detect perubahan file kritis.
+
+- Baseline hash saat pertama scan
+- Scan berikutnya: bandingkan hash → alert kalau berubah
+- File yang dimonitor: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/usr/bin/sudo`, `/etc/ssh/sshd_config`
+- Custom paths via config
+
+#### log_monitor
+Parse system logs untuk detect anomali.
+
+- `/var/log/auth.log` — failed SSH login, sudo usage
+- `/var/log/syslog` — service crashes, OOM killer
+- `journalctl` — systemd service events
+- Detect: brute force (>10 failed login/menit), new root login, sudo to root
+
+#### session_tracker
+Audit siapa yang login ke server.
+
+- `who` — active sessions
+- `last` — login history
+- `w` — current users + activity
+- Alert kalau ada login dari IP baru atau di luar jam kerja
+
+#### container_scan
+Scan Docker images yang ada di VM.
+
+- `docker images` → list semua image
+- Scan via grype atau trivy (optional binary — skip kalau tidak ada)
+- Detect: image dengan CVE HIGH/CRITICAL, image tanpa non-root USER
+- Cek container yang running dengan `--privileged` atau mount docker socket
+
+#### os_package_scan
+Scan OS packages untuk CVE.
+
+- `apt list --installed` (Ubuntu/Debian)
+- `rpm -qa` (RHEL/Rocky/Alma)
+- Match ke Grype-DB (di-serve dari platform)
+- Cover: openssl, libssl, curl, libcurl, kernel packages
+
+#### process_baseline
+Detect suspicious processes.
+
+- Proses berjalan dari `/tmp`, `/dev/shm`, `/var/tmp` → red flag malware
+- Binary tanpa parent package (`dpkg -S` / `rpm -qf`)
+- Proses dengan nama menyerupai system process tapi path berbeda
+
+#### cron_audit
+Detect suspicious cron jobs.
+
+- `crontab -l` semua user
+- `/etc/cron*` directories
+- Flag: cron yang download dari internet, run dari temp dirs, tidak dikenal
+
+---
+
+## Phase 3 — Enterprise
+
+**Goal**: Full security platform untuk enterprise dan regulated industry  
+**Status**: Future
+
+- Windows agent (PowerShell + Scheduled Task)
+- macOS agent (LaunchDaemon)
+- Lynis/OpenSCAP integration (CIS Level 1+2 penuh)
+- Docker/Podman runtime audit lengkap
+- Cloud metadata exposure check (AWS IMDS, GCP, Azure)
+- Nuclei integration (9000+ DAST templates)
+- Real-time SSE scan progress
+- Suppression/whitelist per host per rule
+- Auto-update agent (signed binary)
+- mTLS mutual authentication
+- Differential report (delta only)
+
+---
+
+## Prinsip Desain
+
+### Zero Dependency by Default
+Agent harus bisa jalan di VM bersih tanpa install apapun:
+```
+✅ Native Go implementation untuk semua Phase 1 modules
+✅ Optional binary support (grype, trivy, semgrep) untuk Phase 2
+✅ Graceful degradation — kalau binary tidak ada, skip + log warning
+```
+
+### Lightweight
+```
+Binary size target: <20MB
+CPU: nice 19 + ionice idle (tidak ganggu workload lain)
+RAM: <100MB saat scan
+Scan timeout: 30 menit hard kill
+```
+
+### Privacy First
+```
+Tidak pernah kirim file content ke platform
+Secret values di-mask sebelum dikirim
+Hanya kirim: path, line number, CVE ID, severity
+```
+
+### Modular
+```yaml
+# Customer pilih modul yang aktif
+modules:
+  dependency_scan: true   # default on
+  hardening: true         # default on
+  secret_detection: true  # default on
+  file_watcher: false     # opt-in
+  log_monitor: false      # opt-in
+  container_scan: false   # opt-in
+```
+
+---
+
+## Vuln Intelligence Architecture
+
+Agent tidak query internet langsung. Semua data CVE di-serve dari platform:
+
+```
+BataraSec Platform
+├── OSV.dev API          → npm, Go, Python, PHP
+├── Grype-DB             → OS packages, containers
+├── NVD API              → CVSS enrichment
+└── Semgrep rules        → Secret patterns
+
+Semua di-aggregate sebagai "BataraSec Intelligence"
+Serve ke agent: GET /api/agent/v1/vuln-db/pack?eco=npm
+```
+
+Keuntungan:
+- VM customer tidak butuh akses internet ke OSV.dev/NVD
+- Air-gapped environment tetap bisa scan (Phase 3: bulk download)
+- Platform bisa ganti data source tanpa update agent
+
+---
+
+*Lihat juga: [BataraSec Platform ROADMAP](../../BataraSec/docs/ROADMAP.md)*

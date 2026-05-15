@@ -101,7 +101,7 @@ func TestIsAffectedSemverConstraints(t *testing.T) {
 		{"1.0.0", "", false},
 	}
 	for _, tc := range cases {
-		if got := isAffected(tc.version, tc.constraint); got != tc.want {
+		if got := isAffected(tc.version, tc.constraint, ""); got != tc.want {
 			t.Fatalf("isAffected(%q, %q) = %v, want %v", tc.version, tc.constraint, got, tc.want)
 		}
 	}
