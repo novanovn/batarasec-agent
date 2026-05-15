@@ -29,6 +29,7 @@ Failed sends are queued locally and retried automatically.`,
 
 var scanDryRun bool
 var scanFullScan bool
+var fullScanOverride bool
 
 func init() {
 	scanCmd.Flags().BoolVar(&scanDryRun, "dry-run", false, "print findings without sending to platform")
@@ -93,8 +94,8 @@ func executeScan(dryRun bool) (string, error) {
 	var changedFiles []scanner.Result
 
 	for _, r := range results {
-		changed := scanFullScan
-		if !scanFullScan {
+		changed := scanFullScan || fullScanOverride
+		if !changed {
 			var err error
 			changed, err = db.IsChanged(cfg.ProjectID, r.FilePath, r.ContentHash)
 			if err != nil {
