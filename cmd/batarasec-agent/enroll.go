@@ -35,10 +35,11 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	c := client.New(cfg.PlatformURL, "", "", cfg.TLSSkipVerify)
+	// Enrollment token (project-scoped API key) goes in Authorization header.
+	c := client.New(cfg.PlatformURL, enrollToken, "", cfg.TLSSkipVerify)
 
 	hostname, _ := os.Hostname()
-	req := client.NewEnrollRequest(enrollToken, hostname, runtime.GOOS, runtime.GOARCH)
+	req := client.NewEnrollRequest(hostname, runtime.GOOS, runtime.GOARCH)
 
 	log.Info("enrolling agent",
 		zap.String("platform", cfg.PlatformURL),
