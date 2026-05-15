@@ -35,7 +35,7 @@ func init() {
 	rootCmd.PersistentFlags().String("log-level", "info", "log level: debug, info, warn, error")
 	_ = viper.BindPFlag("log_level", rootCmd.PersistentFlags().Lookup("log-level"))
 
-	rootCmd.AddCommand(enrollCmd, scanCmd, statusCmd, versionCmd)
+	rootCmd.AddCommand(enrollCmd, scanCmd, pollCmd, watchCmd, statusCmd, versionCmd)
 }
 
 func initConfig() {
