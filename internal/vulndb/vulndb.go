@@ -47,6 +47,7 @@ func LoadDir(dir string) (*DB, error) {
 		return nil, fmt.Errorf("read vulndb dir %s: %w", dir, err)
 	}
 
+	loaded := 0
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -59,6 +60,10 @@ func LoadDir(dir string) (*DB, error) {
 		if err := db.loadPack(path); err != nil {
 			return nil, fmt.Errorf("load pack %s: %w", name, err)
 		}
+		loaded++
+	}
+	if loaded == 0 {
+		return nil, fmt.Errorf("no vulnerability packs found in %s", dir)
 	}
 
 	return db, nil
@@ -81,19 +86,41 @@ func (db *DB) loadPack(path string) error {
 		r = gz
 	}
 
-	var pack Pack
-	if err := json.NewDecoder(r).Decode(&pack); err != nil {
-		return fmt.Errorf("decode: %w", err)
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("read: %w", err)
 	}
 
-	for _, entry := range pack.Entries {
-		key := pack.Ecosystem + ":" + strings.ToLower(entry.PackageName)
+	var pack Pack
+	if err := json.Unmarshal(data, &pack); err == nil && pack.Ecosystem != "" {
+		for _, entry := range pack.Entries {
+			key := pack.Ecosystem + ":" + strings.ToLower(entry.PackageName)
+			db.index[key] = append(db.index[key], entry)
+		}
+		return nil
+	}
+
+	var entries []Entry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("decode: %w", err)
+	}
+	ecosystem := ecosystemFromPackPath(path)
+	for _, entry := range entries {
+		key := ecosystem + ":" + strings.ToLower(entry.PackageName)
 		db.index[key] = append(db.index[key], entry)
 	}
 	return nil
 }
 
 // Match returns all CVE findings for the given package.
+func ecosystemFromPackPath(path string) string {
+	name := strings.TrimSuffix(strings.TrimSuffix(filepath.Base(path), ".gz"), ".json")
+	if name == "python" {
+		return "python"
+	}
+	return name
+}
+
 func (db *DB) Match(pkg scanner.Package) []findings.Finding {
 	key := pkg.Ecosystem + ":" + strings.ToLower(pkg.Name)
 	entries := db.index[key]
@@ -103,7 +130,7 @@ func (db *DB) Match(pkg scanner.Package) []findings.Finding {
 
 	var out []findings.Finding
 	for _, e := range entries {
-		if !isAffected(pkg.Version, e.AffectedVersions) {
+		if !isAffected(pkg.Version, e.AffectedVersions, e.FixedIn) {
 			continue
 		}
 		out = append(out, findings.Finding{
@@ -121,12 +148,18 @@ func (db *DB) Match(pkg scanner.Package) []findings.Finding {
 	return out
 }
 
-func isAffected(pkgVersion, constraint string) bool {
-	if pkgVersion == "" || constraint == "" {
+func isAffected(pkgVersion, constraint, fixedIn string) bool {
+	if pkgVersion == "" {
 		return false
 	}
 	v, err := semver.NewVersion(pkgVersion)
 	if err != nil {
+		return false
+	}
+	if constraint == "" && fixedIn != "" {
+		constraint = "<" + fixedIn
+	}
+	if constraint == "" {
 		return false
 	}
 	c, err := semver.NewConstraint(constraint)

@@ -3,6 +3,7 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -52,7 +53,7 @@ func (q *Queue) Close() error { return q.db.Close() }
 // Push adds a failed chunk to the offline queue.
 func (q *Queue) Push(e Entry) error {
 	if e.ID == "" {
-		e.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+		e.ID = fmt.Sprintf("%d-%d", time.Now().UnixNano(), rand.Int63())
 	}
 	if e.CreatedAt.IsZero() {
 		e.CreatedAt = time.Now().UTC()

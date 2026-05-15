@@ -11,6 +11,8 @@ import (
 	"os"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/batarasec/agent/internal/version"
 	"github.com/batarasec/agent/pkg/findings"
 )
@@ -31,6 +33,9 @@ type Client struct {
 func New(baseURL, token, agentID string, tlsSkipVerify bool) *Client {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsSkipVerify}, //nolint:gosec
+	}
+	if tlsSkipVerify {
+		zap.L().Warn("TLS verification disabled - connections may be insecure")
 	}
 	return &Client{
 		baseURL: baseURL,
@@ -95,7 +100,6 @@ func readBody(resp *http.Response) string {
 // — Public API —
 
 type enrollRequest struct {
-	Token    string `json:"token"`
 	Hostname string `json:"hostname"`
 	OS       string `json:"os"`
 	Arch     string `json:"arch"`
@@ -109,8 +113,10 @@ type EnrollResponse struct {
 	Message   string `json:"message"`
 }
 
+// Enroll registers the agent. The client must be initialised with the
+// enrollment API key as the token so it goes in the Authorization header.
 func (c *Client) Enroll(ctx context.Context, req enrollRequest) (*EnrollResponse, error) {
-	resp, err := c.doWithRetry(ctx, http.MethodPost, "/agent/v1/enroll", req)
+	resp, err := c.doWithRetry(ctx, http.MethodPost, "/api/agent/v1/enroll", req)
 	if err != nil {
 		return nil, err
 	}
@@ -122,14 +128,14 @@ func (c *Client) Enroll(ctx context.Context, req enrollRequest) (*EnrollResponse
 	return &out, json.NewDecoder(resp.Body).Decode(&out)
 }
 
-func NewEnrollRequest(token, hostname, goos, goarch string) enrollRequest {
-	return enrollRequest{Token: token, Hostname: hostname, OS: goos, Arch: goarch, Version: version.Version}
+func NewEnrollRequest(hostname, goos, goarch string) enrollRequest {
+	return enrollRequest{Hostname: hostname, OS: goos, Arch: goarch, Version: version.Version}
 }
 
 // Heartbeat sends a ping to the platform. Called every 30 min via the scan timer.
 func (c *Client) Heartbeat(ctx context.Context) error {
 	body := map[string]string{"agent_id": c.agentID}
-	resp, err := c.doWithRetry(ctx, http.MethodPost, "/agent/v1/heartbeat", body)
+	resp, err := c.doWithRetry(ctx, http.MethodPost, "/api/agent/v1/heartbeat", body)
 	if err != nil {
 		return err
 	}
@@ -151,7 +157,7 @@ type scanStartResponse struct {
 
 // ScanStart opens a new scan job and returns the job ID.
 func (c *Client) ScanStart(ctx context.Context, projectID string) (string, error) {
-	resp, err := c.doWithRetry(ctx, http.MethodPost, "/agent/v1/scan/start",
+	resp, err := c.doWithRetry(ctx, http.MethodPost, "/api/agent/v1/scan/start",
 		scanStartRequest{AgentID: c.agentID, ProjectID: projectID})
 	if err != nil {
 		return "", err
@@ -171,7 +177,7 @@ type pushRequest struct {
 // ScanPush sends one chunk (≤100 findings) to the platform.
 func (c *Client) ScanPush(ctx context.Context, jobID string, chunk []findings.Finding) error {
 	resp, err := c.doWithRetry(ctx, http.MethodPost,
-		"/agent/v1/scan/"+jobID+"/push",
+		"/api/agent/v1/scan/"+jobID+"/push",
 		pushRequest{Findings: chunk})
 	if err != nil {
 		return err
@@ -183,6 +189,54 @@ func (c *Client) ScanPush(ctx context.Context, jobID string, chunk []findings.Fi
 	return nil
 }
 
+type Command struct {
+	ID     string          `json:"id"`
+	Type   string          `json:"type"`
+	Params json.RawMessage `json:"params"`
+}
+
+type pollCommandsResponse struct {
+	Commands []Command `json:"commands"`
+}
+
+func (c *Client) PollCommands(ctx context.Context) ([]Command, error) {
+	resp, err := c.doWithRetry(ctx, http.MethodGet, "/api/agent/v1/commands", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("commands: HTTP %d — %s", resp.StatusCode, readBody(resp))
+	}
+	var out pollCommandsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out.Commands, nil
+}
+
+type commandDoneRequest struct {
+	Status       string `json:"status"`
+	ScanJobID    string `json:"scan_job_id,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+func (c *Client) CommandDone(ctx context.Context, commandID, status, scanJobID, errorMessage string) error {
+	resp, err := c.doWithRetry(ctx, http.MethodPost, "/api/agent/v1/commands/"+commandID+"/done", commandDoneRequest{
+		Status:       status,
+		ScanJobID:    scanJobID,
+		ErrorMessage: errorMessage,
+	})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("commands/done: HTTP %d — %s", resp.StatusCode, readBody(resp))
+	}
+	return nil
+}
+
 type doneRequest struct {
 	TotalFindings int `json:"total_findings"`
 }
@@ -190,7 +244,7 @@ type doneRequest struct {
 // ScanDone finalises a scan job.
 func (c *Client) ScanDone(ctx context.Context, jobID string, total int) error {
 	resp, err := c.doWithRetry(ctx, http.MethodPost,
-		"/agent/v1/scan/"+jobID+"/done",
+		"/api/agent/v1/scan/"+jobID+"/done",
 		doneRequest{TotalFindings: total})
 	if err != nil {
 		return err
@@ -218,7 +272,7 @@ func (c *Client) SendChunked(ctx context.Context, jobID string, all []findings.F
 
 // DownloadVulnDBPack downloads the vulnerability pack for one ecosystem.
 func (c *Client) DownloadVulnDBPack(ctx context.Context, ecosystem, destPath string) error {
-	resp, err := c.do(ctx, http.MethodGet, "/agent/v1/vuln-db/pack?eco="+ecosystem, nil)
+	resp, err := c.do(ctx, http.MethodGet, "/api/agent/v1/vuln-db/pack?eco="+ecosystem, nil)
 	if err != nil {
 		return err
 	}
@@ -233,13 +287,17 @@ func (c *Client) DownloadVulnDBPack(ctx context.Context, ecosystem, destPath str
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
-	return err
+	// Limit download size to 500MB to prevent disk exhaustion
+	_, err = io.Copy(f, io.LimitReader(resp.Body, 500<<20))
+	if err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+	return nil
 }
 
 // GetAgentConfig fetches remote config overrides from the platform.
 func (c *Client) GetAgentConfig(ctx context.Context) (map[string]interface{}, error) {
-	resp, err := c.doWithRetry(ctx, http.MethodGet, "/agent/v1/config", nil)
+	resp, err := c.doWithRetry(ctx, http.MethodGet, "/api/agent/v1/config", nil)
 	if err != nil {
 		return nil, err
 	}
