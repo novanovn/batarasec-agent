@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/batarasec/agent/internal/cache"
@@ -27,36 +28,43 @@ Failed sends are queued locally and retried automatically.`,
 }
 
 var scanDryRun bool
+var scanFullScan bool
 
 func init() {
 	scanCmd.Flags().BoolVar(&scanDryRun, "dry-run", false, "print findings without sending to platform")
+	scanCmd.Flags().BoolVar(&scanFullScan, "full-scan", false, "process all manifests without delta cache filtering")
 }
 
 func runScan(cmd *cobra.Command, args []string) error {
+	_, err := executeScan(scanDryRun)
+	return err
+}
+
+func executeScan(dryRun bool) (string, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return "", fmt.Errorf("load config: %w", err)
 	}
 
-	if cfg.AgentID == "" && !scanDryRun {
-		return fmt.Errorf("agent not enrolled — run: batarasec-agent enroll --token <TOKEN>")
+	if cfg.AgentID == "" && !dryRun {
+		return "", fmt.Errorf("agent not enrolled — run: batarasec-agent enroll --token <TOKEN>")
 	}
 
 	// Ensure data dirs exist.
-	for _, dir := range []string{dirOf(cfg.CachePath), cfg.VulnDBPath} {
+	for _, dir := range []string{filepath.Dir(cfg.CachePath), cfg.VulnDBPath} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("create dir %s: %w", dir, err)
+			return "", fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
 
 	db, err := cache.Open(cfg.CachePath)
 	if err != nil {
-		return fmt.Errorf("open cache: %w", err)
+		return "", fmt.Errorf("open cache: %w", err)
 	}
 	defer db.Close()
 
 	// Send heartbeat before scan.
-	if !scanDryRun && cfg.Token != "" {
+	if !dryRun && cfg.Token != "" {
 		c := client.New(cfg.PlatformURL, cfg.Token, cfg.AgentID, cfg.TLSSkipVerify)
 		hbCtx, hbCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer hbCancel()
@@ -68,7 +76,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Load or download vuln DB.
 	vdb, err := loadOrDownloadVulnDB(cfg)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	scanTime := time.Now().UTC()
@@ -85,10 +93,14 @@ func runScan(cmd *cobra.Command, args []string) error {
 	var changedFiles []scanner.Result
 
 	for _, r := range results {
-		changed, err := db.IsChanged(cfg.ProjectID, r.FilePath, r.ContentHash)
-		if err != nil {
-			log.Warn("cache check error", zap.String("file", r.FilePath), zap.Error(err))
-			changed = true
+		changed := scanFullScan
+		if !scanFullScan {
+			var err error
+			changed, err = db.IsChanged(cfg.ProjectID, r.FilePath, r.ContentHash)
+			if err != nil {
+				log.Warn("cache check error", zap.String("file", r.FilePath), zap.Error(err))
+				changed = true
+			}
 		}
 		if !changed {
 			log.Debug("file unchanged, skipping", zap.String("file", r.FilePath))
@@ -103,6 +115,9 @@ func runScan(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Deduplicate findings by cve_id + package_name + version
+	allFindings = deduplicateFindings(allFindings)
+
 	log.Info("delta detection complete",
 		zap.Int("changed_files", len(changedFiles)),
 		zap.Int("findings", len(allFindings)),
@@ -115,20 +130,18 @@ func runScan(cmd *cobra.Command, args []string) error {
 			len(allFindings), len(changedFiles))
 	}
 
-	if scanDryRun {
+	if dryRun {
 		printFindings(allFindings)
-		return nil
+		return "", nil
 	}
 
-	if len(allFindings) > 0 {
-		if err := sendFindings(cfg, allFindings, changedFiles, db); err != nil {
-			log.Error("send failed, queuing", zap.Error(err))
+	var jobID string
+	if jobID, err = sendFindings(cfg, allFindings, changedFiles, db); err != nil {
+		log.Error("send failed, queuing", zap.Error(err))
+	} else {
+		for _, r := range changedFiles {
+			_ = db.MarkScanned(cfg.ProjectID, r.FilePath, r.ContentHash)
 		}
-	}
-
-	// Update file hash cache for changed files (even if no findings).
-	for _, r := range changedFiles {
-		_ = db.MarkScanned(cfg.ProjectID, r.FilePath, r.ContentHash)
 	}
 
 	// Prune stale cache entries (>90 days).
@@ -142,10 +155,10 @@ func runScan(cmd *cobra.Command, args []string) error {
 	// Drain offline queue.
 	drainOfflineQueue(cfg)
 
-	return nil
+	return jobID, nil
 }
 
-func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []scanner.Result, db *cache.DB) error {
+func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []scanner.Result, db *cache.DB) (string, error) {
 	c := client.New(cfg.PlatformURL, cfg.Token, cfg.AgentID, cfg.TLSSkipVerify)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -153,10 +166,19 @@ func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []sca
 
 	jobID, err := c.ScanStart(ctx, cfg.ProjectID)
 	if err != nil {
-		return fmt.Errorf("scan/start: %w", err)
+		return "", fmt.Errorf("scan/start: %w", err)
 	}
 
 	log.Info("scan job started", zap.String("job_id", jobID))
+
+	if len(all) == 0 {
+		if err := c.ScanDone(ctx, jobID, 0); err != nil {
+			return "", fmt.Errorf("scan/done: %w", err)
+		}
+		log.Info("scan complete", zap.Int("findings_sent", 0), zap.String("job_id", jobID))
+		fmt.Printf("Sent 0 findings to BataraSec (job: %s)\n", jobID)
+		return jobID, nil
+	}
 
 	if err := c.SendChunked(ctx, jobID, all); err != nil {
 		// Queue the failed chunk for later retry.
@@ -168,11 +190,11 @@ func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []sca
 				Findings: all,
 			})
 		}
-		return fmt.Errorf("send chunks: %w", err)
+		return "", fmt.Errorf("send chunks: %w", err)
 	}
 
 	if err := c.ScanDone(ctx, jobID, len(all)); err != nil {
-		return fmt.Errorf("scan/done: %w", err)
+		return "", fmt.Errorf("scan/done: %w", err)
 	}
 
 	log.Info("scan complete", zap.Int("findings_sent", len(all)), zap.String("job_id", jobID))
@@ -182,7 +204,7 @@ func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []sca
 	for _, r := range changedFiles {
 		_ = db.MarkSent(cfg.ProjectID, r.FilePath)
 	}
-	return nil
+	return jobID, nil
 }
 
 func loadOrDownloadVulnDB(cfg *config.Config) (*vulndb.DB, error) {
@@ -243,11 +265,17 @@ func printFindings(fs []findings.Finding) {
 	}
 }
 
-func dirOf(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			return path[:i]
+// deduplicateFindings removes duplicate findings by cve_id + package_name + version
+func deduplicateFindings(fs []findings.Finding) []findings.Finding {
+	seen := make(map[string]struct{})
+	var result []findings.Finding
+
+	for _, f := range fs {
+		key := f.CVEID + "|" + f.PackageName + "|" + f.Version
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			result = append(result, f)
 		}
 	}
-	return "."
+	return result
 }
