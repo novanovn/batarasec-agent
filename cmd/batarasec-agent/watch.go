@@ -33,7 +33,13 @@ func runWatch(cmd *cobra.Command, args []string) error {
 	}
 	defer watcher.Close()
 
-	for _, root := range cfg.ScanPaths {
+	scanPaths := cfg.ScanPaths
+	if len(scanPaths) == 0 {
+		scanPaths = []string{"/home", "/opt", "/srv", "/var/www"}
+		log.Info("no scan_paths configured, using defaults", zap.Strings("paths", scanPaths))
+	}
+
+	for _, root := range scanPaths {
 		if err := addWatchDirs(watcher, root); err != nil {
 			log.Warn("watch path skipped", zap.String("path", root), zap.Error(err))
 		}

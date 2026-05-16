@@ -2,9 +2,11 @@
 # BataraSec Agent — one-liner installer
 # Usage: curl -fsSL https://<platform>/agent/install.sh | sudo bash
 #        BATARASEC_PLATFORM_URL=https://... bash install.sh
+#        bash install.sh --scan-paths=/opt,/var/www
 set -euo pipefail
 
 PLATFORM_URL="${BATARASEC_PLATFORM_URL:-https://103.93.160.112}"
+SCAN_PATHS="${BATARASEC_SCAN_PATHS:-/home,/opt,/srv,/var/www}"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="/etc/batarasec"
 DATA_DIR="/var/lib/batarasec"
@@ -24,7 +26,22 @@ detect_platform() {
   echo "${os}-${arch}"
 }
 
+parse_args() {
+  for i in "$@"; do
+    case $i in
+      --scan-paths=*)
+        SCAN_PATHS="${i#*=}"
+        shift
+        ;;
+      *)
+        ;;
+    esac
+  done
+}
+
 main() {
+  parse_args "$@"
+
   if [[ $EUID -ne 0 ]]; then
     echo "Please run as root (sudo bash install.sh)" >&2
     exit 1
@@ -61,20 +78,23 @@ main() {
 
   # Write default config if absent.
   if [[ ! -f "${CONFIG_DIR}/agent.yaml" ]]; then
+    echo "==> Writing config to ${CONFIG_DIR}/agent.yaml"
     cat > "${CONFIG_DIR}/agent.yaml" <<EOF
 platform_url: "${PLATFORM_URL}"
 cache_path: "${DATA_DIR}/cache.db"
 vuln_db_path: "${DATA_DIR}/vuln-db"
 scan_paths:
-  - /home
-  - /opt
-  - /srv
-  - /var/www
+EOF
+    IFS=',' read -ra ADDR <<< "$SCAN_PATHS"
+    for path in "${ADDR[@]}"; do
+      echo "  - $path" >> "${CONFIG_DIR}/agent.yaml"
+    done
+    cat >> "${CONFIG_DIR}/agent.yaml" <<EOF
 log_level: info
 tls_skip_verify: false
 EOF
     chmod 0600 "${CONFIG_DIR}/agent.yaml"
-    echo "==> Config written to ${CONFIG_DIR}/agent.yaml"
+    echo "==> Config written with scan_paths: ${SCAN_PATHS}"
   fi
 
   # Install systemd units.

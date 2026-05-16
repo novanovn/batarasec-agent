@@ -298,6 +298,28 @@
 ## Phase 2 — Backlog
 > Do not start before Phase 1 stays stable after partner/customer feedback.
 
+### [CORE] Platform-triggered agent uninstall
+- **Main task**: Phase 2 — Backlog
+- **Subtask**: CORE-05
+- **Owner**: Yudhistira
+- **Status**: done
+- **Priority**: P1
+- **Est**: ~1 jam
+- **Scope**: Recognize `uninstall_agent` command in poll loop. Report completion to API, then execute self-deletion script (background shell) to stop/disable systemd service/timer and remove `/etc/batarasec`, `/var/lib/batarasec`, and binary.
+- **Done when**: Agent picks up `uninstall_agent` command, reports it, and successfully removes its own files and service.
+- **Evidence**: `cmd/batarasec-agent/poll.go`.
+
+### [CORE] Configurable scan paths
+- **Main task**: Phase 2 — Backlog
+- **Subtask**: CORE-06
+- **Owner**: Yudhistira
+- **Status**: done
+- **Priority**: P2
+- **Est**: ~1 jam
+- **Scope**: Support `--scan-paths` in `install.sh` and `enroll` command. Persist custom paths in config. Fallback to defaults if none configured. Validate absolute paths in `enroll`.
+- **Done when**: Agent can be installed/enrolled with custom paths, and both `scan` and `watch` use those paths correctly.
+- **Evidence**: `scripts/install.sh`, `cmd/batarasec-agent/enroll.go`, `scan.go`, `watch.go`.
+
 ### [AGENT-P2] Hardening checks
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-01

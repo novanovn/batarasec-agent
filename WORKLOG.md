@@ -31,12 +31,17 @@
 - `internal/vulndb/vulndb_test.go`
 
 ## Last Verification
+- 2026-05-16: Implemented and verified LRG-20 and LRG-21 changes.
+  - Uninstall: added `uninstall_agent` command handling in `poll.go` with self-deletion script.
+  - Scan paths: added `--scan-paths` to `install.sh` and `enroll.go`, updated `scan.go` and `watch.go` to use configured paths or fall back to defaults.
+  - Build successful: `go build ./cmd/batarasec-agent/` passed.
 - 2026-05-13: `go run ./cmd/batarasec-agent version`, `go run ./cmd/batarasec-agent scan --dry-run`, and `go test ./...` passed for Phase 1 baseline.
 - 2026-05-13: parser and vuln DB tests passed; scanner coverage was 71.5% and vuln DB coverage was 86.3%.
 - 2026-05-15: BataraSec platform served `https://localhost/agent-binaries/batarasec-agent_linux_amd64` as `200 application/octet-stream` with ELF magic `7f 45 4c 46`.
 - 2026-05-15: Fresh WSL install enrolled agent `8263266e-f640-44f1-9ef8-2768085060e9` successfully against BataraSec staging/local HTTPS.
 - 2026-05-15: Manual full scan sent findings and completed scan job `ef17f81e-f959-4d6f-bb8f-aba8d6b8b4ae`.
 - 2026-05-15: Watcher E2E triggered scans from manifest changes and sent findings in jobs `d3091882-f012-440c-862b-48ecd5662470` and `4d7e886d-8428-49ea-86e4-f2e23ca07ff5`.
+- 2026-05-16: Implemented LRG-20 (Platform-triggered uninstall) and LRG-21 (Configurable scan paths).
 - 2026-05-15: UI Scan Now command was picked up by poll timer, forced a full scan, sent 164 findings, and completed job `c88d0e95-2b86-41e7-a84d-3b206dfa4406`.
 
 ## Blockers / Decisions

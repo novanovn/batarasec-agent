@@ -82,10 +82,16 @@ func executeScan(dryRun bool) (string, error) {
 
 	scanTime := time.Now().UTC()
 
-	log.Info("scan started", zap.Strings("paths", cfg.ScanPaths))
+	scanPaths := cfg.ScanPaths
+	if len(scanPaths) == 0 {
+		scanPaths = []string{"/home", "/opt", "/srv", "/var/www"}
+		log.Info("no scan_paths configured, using defaults", zap.Strings("paths", scanPaths))
+	}
+
+	log.Info("scan started", zap.Strings("paths", scanPaths))
 
 	// Discover manifests.
-	sc := scanner.New(cfg.ScanPaths, log)
+	sc := scanner.New(scanPaths, log)
 	results := sc.Scan()
 	log.Info("manifests discovered", zap.Int("files", len(results)))
 

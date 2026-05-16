@@ -108,10 +108,12 @@ tls_skip_verify: false    # set true hanya untuk self-signed cert
 | Module | Fungsi |
 |--------|--------|
 | `dependency_scan` | Scan manifest files → match CVE via BataraSec Intelligence |
-| `hardening_lite` | 15 CIS benchmark checks (SSH, firewall, permissions, dll) |
-| `secret_detection` | Detect hardcoded credentials, API keys, private keys *(coming soon)* |
-| `exposed_files` | Detect .env, .git, backup files yang exposed *(coming soon)* |
-| `ssl_expiry` | Cek sertifikat SSL yang akan expired *(coming soon)* |
+| `hardening_lite` | Baseline CIS-style posture checks (SSH, firewall, permissions, dll) |
+| `command_polling` | Poll platform commands and execute Scan Now requests |
+| `manifest_watcher` | Watch dependency manifests and trigger scans on change |
+| `secret_detection` | Detect hardcoded credentials, API keys, private keys *(backlog)* |
+| `exposed_files` | Detect .env, .git, backup files yang exposed *(backlog)* |
+| `ssl_expiry` | Cek sertifikat SSL yang akan expired *(backlog)* |
 
 ### Phase 2 (roadmap)
 
@@ -234,8 +236,10 @@ POST /api/agent/v1/heartbeat       ← ping setiap 30 menit
 POST /api/agent/v1/scan/start      ← buat scan job
 POST /api/agent/v1/scan/:id/push   ← kirim findings (chunk 100)
 POST /api/agent/v1/scan/:id/done   ← finalize scan
-GET  /api/agent/v1/vuln-db/pack    ← download vuln DB pack
+GET  /api/agent/v1/vuln-db/pack    ← download vuln DB pack dari worker-owned platform snapshots
 GET  /api/agent/v1/config          ← pull config dari platform
+GET  /api/agent/v1/commands        ← poll Scan Now / platform commands
+POST /api/agent/v1/commands/:id/done ← report command result
 ```
 
 Auth: JWT Bearer token (365 hari, disimpan di config setelah enroll).

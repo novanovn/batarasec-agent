@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -22,10 +23,14 @@ Credentials (agent_id, project_id, token) are saved to the config file.`,
 	RunE: runEnroll,
 }
 
-var enrollToken string
+var (
+	enrollToken     string
+	enrollScanPaths []string
+)
 
 func init() {
 	enrollCmd.Flags().StringVarP(&enrollToken, "token", "t", "", "enrollment token (required)")
+	enrollCmd.Flags().StringSliceVar(&enrollScanPaths, "scan-paths", nil, "comma-separated list of absolute paths to scan")
 	_ = enrollCmd.MarkFlagRequired("token")
 }
 
@@ -52,6 +57,16 @@ func runEnroll(cmd *cobra.Command, args []string) error {
 	resp, err := c.Enroll(ctx, req)
 	if err != nil {
 		return fmt.Errorf("enroll: %w", err)
+	}
+
+	if len(enrollScanPaths) > 0 {
+		for _, p := range enrollScanPaths {
+			if !filepath.IsAbs(p) {
+				return fmt.Errorf("scan path must be absolute: %s", p)
+			}
+		}
+		viper.Set("scan_paths", enrollScanPaths)
+		cfg.ScanPaths = enrollScanPaths
 	}
 
 	viper.Set("agent_id", resp.AgentID)
