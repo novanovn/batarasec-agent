@@ -1,6 +1,6 @@
 # batarasec-agent — TODO
 > Managed by: **Bisma/Yudhistira**
-> Last updated: 2026-05-15
+> Last updated: 2026-05-16
 > Phase 1: Direct mode only (no relay)
 
 ---
