@@ -189,6 +189,25 @@ func (c *Client) ScanPush(ctx context.Context, jobID string, chunk []findings.Fi
 	return nil
 }
 
+type posturePushRequest struct {
+	Findings []findings.PostureFinding `json:"findings"`
+}
+
+// ScanPosturePush sends posture findings to the platform.
+func (c *Client) ScanPosturePush(ctx context.Context, jobID string, findings []findings.PostureFinding) error {
+	resp, err := c.doWithRetry(ctx, http.MethodPost,
+		"/api/agent/v1/scan/"+jobID+"/posture",
+		posturePushRequest{Findings: findings})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("scan/posture: HTTP %d — %s", resp.StatusCode, readBody(resp))
+	}
+	return nil
+}
+
 type Command struct {
 	ID     string          `json:"id"`
 	Type   string          `json:"type"`

@@ -130,11 +130,18 @@ func executeScan(dryRun bool) (string, error) {
 		zap.Int("findings", len(allFindings)),
 	)
 
+	// Run posture/hardening checks.
+	postureResults := scanner.RunPostureChecks()
+	log.Info("posture checks complete", zap.Int("findings", len(postureResults)))
+
 	if len(allFindings) == 0 {
 		fmt.Println("No new findings.")
 	} else {
 		fmt.Printf("Found %d finding(s) across %d changed file(s).\n",
 			len(allFindings), len(changedFiles))
+	}
+	if len(postureResults) > 0 {
+		fmt.Printf("Found %d posture finding(s).\n", len(postureResults))
 	}
 
 	if dryRun {
@@ -143,7 +150,7 @@ func executeScan(dryRun bool) (string, error) {
 	}
 
 	var jobID string
-	if jobID, err = sendFindings(cfg, allFindings, changedFiles, db); err != nil {
+	if jobID, err = sendFindings(cfg, allFindings, postureResults, changedFiles, db); err != nil {
 		log.Error("send failed, queuing", zap.Error(err))
 	} else {
 		for _, r := range changedFiles {
@@ -165,7 +172,7 @@ func executeScan(dryRun bool) (string, error) {
 	return jobID, nil
 }
 
-func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []scanner.Result, db *cache.DB) (string, error) {
+func sendFindings(cfg *config.Config, all []findings.Finding, posture []findings.PostureFinding, changedFiles []scanner.Result, db *cache.DB) (string, error) {
 	c := client.New(cfg.PlatformURL, cfg.Token, cfg.AgentID, cfg.TLSSkipVerify)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -178,34 +185,35 @@ func sendFindings(cfg *config.Config, all []findings.Finding, changedFiles []sca
 
 	log.Info("scan job started", zap.String("job_id", jobID))
 
-	if len(all) == 0 {
-		if err := c.ScanDone(ctx, jobID, 0); err != nil {
-			return "", fmt.Errorf("scan/done: %w", err)
+	// Send vulnerabilities (if any)
+	if len(all) > 0 {
+		if err := c.SendChunked(ctx, jobID, all); err != nil {
+			// Queue the failed chunk for later retry.
+			q, qErr := queue.Open(cfg.CachePath + ".queue")
+			if qErr == nil {
+				defer q.Close()
+				_ = q.Push(queue.Entry{
+					JobID:    jobID,
+					Findings: all,
+				})
+			}
+			return "", fmt.Errorf("send chunks: %w", err)
 		}
-		log.Info("scan complete", zap.Int("findings_sent", 0), zap.String("job_id", jobID))
-		fmt.Printf("Sent 0 findings to BataraSec (job: %s)\n", jobID)
-		return jobID, nil
 	}
 
-	if err := c.SendChunked(ctx, jobID, all); err != nil {
-		// Queue the failed chunk for later retry.
-		q, qErr := queue.Open(cfg.CachePath + ".queue")
-		if qErr == nil {
-			defer q.Close()
-			_ = q.Push(queue.Entry{
-				JobID:    jobID,
-				Findings: all,
-			})
+	// Send posture findings (if any)
+	if len(posture) > 0 {
+		if err := c.ScanPosturePush(ctx, jobID, posture); err != nil {
+			log.Warn("posture push failed", zap.Error(err))
 		}
-		return "", fmt.Errorf("send chunks: %w", err)
 	}
 
 	if err := c.ScanDone(ctx, jobID, len(all)); err != nil {
 		return "", fmt.Errorf("scan/done: %w", err)
 	}
 
-	log.Info("scan complete", zap.Int("findings_sent", len(all)), zap.String("job_id", jobID))
-	fmt.Printf("Sent %d findings to BataraSec (job: %s)\n", len(all), jobID)
+	log.Info("scan complete", zap.Int("findings_sent", len(all)), zap.Int("posture_sent", len(posture)), zap.String("job_id", jobID))
+	fmt.Printf("Sent %d vulnerability and %d posture findings to BataraSec (job: %s)\n", len(all), len(posture), jobID)
 
 	// Mark files as sent.
 	for _, r := range changedFiles {

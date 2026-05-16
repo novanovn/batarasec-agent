@@ -12,3 +12,14 @@ type Finding struct {
 	FixedIn     string  `json:"fixed_in,omitempty"`
 	Title       string  `json:"title,omitempty"`
 }
+
+// PostureFinding is a hardening/configuration finding.
+type PostureFinding struct {
+	RuleID      string                 `json:"rule_id"`
+	Category    string                 `json:"category"`
+	Severity    string                 `json:"severity"` // critical | high | medium | low | info
+	Title       string                 `json:"title"`
+	Description string                 `json:"description,omitempty"`
+	Evidence    map[string]interface{} `json:"evidence,omitempty"`
+	Remediation string                 `json:"remediation,omitempty"`
+}

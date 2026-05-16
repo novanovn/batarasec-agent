@@ -50,7 +50,7 @@ func runPoll(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		if command.Type != "scan_full" && command.Type != "scan_fs" {
+		if command.Type != "scan_full" && command.Type != "scan_fs" && command.Type != "scan_hardening" {
 			markCommandDone(c, command.ID, "failed", "", "unsupported command type: "+command.Type)
 			continue
 		}
