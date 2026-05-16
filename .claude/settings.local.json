@@ -5,7 +5,13 @@
       "Bash(Remove-Item -Recurse -Force cmd, internal\\\\api, internal\\\\parser, internal\\\\cache, internal\\\\scanner, internal\\\\vulndb, internal\\\\config, internal\\\\version, internal\\\\queue, systemd, install.sh, main.go -ErrorAction SilentlyContinue)",
       "Bash(go get *)",
       "Bash(rtk go *)",
-      "Bash(rtk git *)"
+      "Bash(rtk git *)",
+      "Bash(wsl *)",
+      "Bash(Get-ChildItem -Path \"D:\\\\Ngoprek\\\\ngulik\\\\BataraSec\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(rtk find *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk grep *)"
     ]
   }
 }
