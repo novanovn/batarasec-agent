@@ -334,11 +334,13 @@
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-02
 - **Owner**: Yudhistira
-- **Status**: backlog
+- **Status**: done
 - **Priority**: P1
 - **Est**: ~2 jam
-- **Scope**: Detect privileged containers, host networking, Docker socket mounts, root users, and unexpected exposed ports.
-- **Done when**: Misconfigured containers are reported as posture findings.
+- **Scope**: Detect privileged containers (DKR-002), host networking (DKR-004), Docker socket mounts (DKR-001), root users (DKR-005), sensitive host mounts (DKR-003), and insecure port bindings (DKR-006).
+- **Done when**: Misconfigured containers are reported as posture findings with RuleIDs DKR-001 to DKR-006.
+- **Worked**: 2026-05-16 — Implemented DKR-001..DKR-006 using `docker inspect` parsing. Verified with local vulnerable containers (privileged, socket mount, shadow mount, root user, host network, public port binding).
+- **Commit**: `feat: implement AP2-02 Docker runtime audit (DKR-001..006)`
 
 ### [AGENT-P2] File integrity monitoring
 - **Main task**: Phase 2 — Backlog
