@@ -83,41 +83,30 @@ func executeUninstall(c *client.Client, commandID string) error {
 	// 2. Give some time for the network request to finish and logs to flush.
 	time.Sleep(2 * time.Second)
 
-	// 3. Prepare the self-deletion script.
-	// Since we are running as a service (likely), we should stop ourselves via systemd
-	// but we also need to delete files. A simple way is to use a detached background process
-	// or rely on a script.
+	log.Info("starting synchronous self-cleanup")
 
-	// Paths to remove:
-	// /usr/local/bin/batarasec-agent
-	// /etc/batarasec/ (config)
-	// /var/lib/batarasec/ (cache, vuln-db, queue)
-	// /etc/systemd/system/batarasec-agent.service
-	// /etc/systemd/system/batarasec-agent.timer
-
-	uninstallCmd := `(
-		sleep 2;
-		systemctl disable --now batarasec-agent.timer || true;
-		systemctl stop batarasec-agent.service || true;
-		systemctl disable batarasec-agent.service || true;
-		rm -f /etc/systemd/system/batarasec-agent.service;
-		rm -f /etc/systemd/system/batarasec-agent.timer;
-		systemctl daemon-reload;
-		rm -rf /etc/batarasec;
-		rm -rf /var/lib/batarasec;
-		rm -f /usr/local/bin/batarasec-agent;
-	) &`
-
-	log.Info("executing self-deletion command")
-	// Execute the background shell command.
-	// Since we are running as a service (likely), we should stop ourselves via systemd
-	// but we also need to delete files. A simple way is to use a detached background process
-	// or rely on a script.
-
-	executor := "sh"
-	if _, err := os.Stat("/bin/bash"); err == nil {
-		executor = "/bin/bash"
+	// 3. Remove unit files FIRST so systemd cannot restart services after we kill them.
+	unitFiles := []string{
+		"/etc/systemd/system/batarasec-agent.service",
+		"/etc/systemd/system/batarasec-agent.timer",
+		"/etc/systemd/system/batarasec-agent-poll.service",
+		"/etc/systemd/system/batarasec-agent-poll.timer",
+		"/etc/systemd/system/batarasec-agent-watch.service",
 	}
+	for _, f := range unitFiles {
+		os.Remove(f)
+	}
+	exec.Command("systemctl", "daemon-reload").Run() //nolint:errcheck
 
-	return exec.Command(executor, "-c", uninstallCmd).Start()
+	// 4. Stop the watch service gracefully (unit file is gone so it won't restart).
+	exec.Command("systemctl", "stop", "--no-block", "batarasec-agent-watch.service").Run() //nolint:errcheck
+
+	// 5. Remove configuration, database cache, and the binary itself.
+	//    On Linux a running binary can be unlinked from disk; it keeps running until exit.
+	os.RemoveAll("/etc/batarasec")
+	os.RemoveAll("/var/lib/batarasec")
+	os.Remove("/usr/local/bin/batarasec-agent")
+
+	log.Info("self-cleanup complete — poll service exiting")
+	return nil
 }
