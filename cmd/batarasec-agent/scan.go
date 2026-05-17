@@ -77,7 +77,8 @@ func executeScan(dryRun bool) (string, error) {
 	// Load or download vuln DB.
 	vdb, err := loadOrDownloadVulnDB(cfg)
 	if err != nil {
-		return "", err
+		log.Warn("failed to load vulnerability database, running posture/hardening checks only", zap.Error(err))
+		vdb = nil // Ensure we still run hardening checks
 	}
 
 	scanTime := time.Now().UTC()
@@ -245,7 +246,12 @@ func loadOrDownloadVulnDB(cfg *config.Config) (*vulndb.DB, error) {
 		dlCancel()
 	}
 
-	return vulndb.LoadDir(cfg.VulnDBPath)
+	vdb, err = vulndb.LoadDir(cfg.VulnDBPath)
+	if err != nil {
+		log.Warn("vuln packs not available after download attempt; posture checks will still run", zap.Error(err))
+		return nil, nil
+	}
+	return vdb, nil
 }
 
 func drainOfflineQueue(cfg *config.Config) {
