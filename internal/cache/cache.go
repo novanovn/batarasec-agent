@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -12,6 +14,7 @@ import (
 var (
 	bucketFileHashes = []byte("file_hashes")
 	bucketMeta       = []byte("metadata")
+	bucketFindings   = []byte("finding_baseline")
 )
 
 // DB is the bbolt-backed delta cache.
@@ -27,6 +30,17 @@ type FileRecord struct {
 	SentAt      *time.Time `json:"sent_at,omitempty"`
 }
 
+type FindingBaseline struct {
+	Fingerprints []string  `json:"fingerprints"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type FindingDelta struct {
+	FirstScan bool
+	New       []string
+	Resolved  []string
+}
+
 func Open(path string) (*DB, error) {
 	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 5 * time.Second})
 	if err != nil {
@@ -37,7 +51,10 @@ func Open(path string) (*DB, error) {
 		if _, err := tx.CreateBucketIfNotExists(bucketFileHashes); err != nil {
 			return err
 		}
-		_, err := tx.CreateBucketIfNotExists(bucketMeta)
+		if _, err := tx.CreateBucketIfNotExists(bucketMeta); err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists(bucketFindings)
 		return err
 	}); err != nil {
 		db.Close()
@@ -52,6 +69,11 @@ func (d *DB) Close() error { return d.db.Close() }
 // cacheKey returns sha256(projectID + filePath) as hex.
 func cacheKey(projectID, filePath string) []byte {
 	sum := sha256.Sum256([]byte(projectID + "\x00" + filePath))
+	return []byte(fmt.Sprintf("%x", sum))
+}
+
+func ProjectKey(projectID string) []byte {
+	sum := sha256.Sum256([]byte(projectID))
 	return []byte(fmt.Sprintf("%x", sum))
 }
 
@@ -127,6 +149,76 @@ func (d *DB) GetMeta(key string) (string, error) {
 		return nil
 	})
 	return val, err
+}
+
+func (d *DB) FindingDelta(projectID string, fingerprints []string) (FindingDelta, error) {
+	current := normalizeFingerprints(fingerprints)
+	currentSet := make(map[string]struct{}, len(current))
+	for _, fp := range current {
+		currentSet[fp] = struct{}{}
+	}
+
+	var baseline FindingBaseline
+	err := d.db.View(func(tx *bolt.Tx) error {
+		v := tx.Bucket(bucketFindings).Get(ProjectKey(projectID))
+		if v == nil {
+			return nil
+		}
+		return json.Unmarshal(v, &baseline)
+	})
+	if err != nil {
+		return FindingDelta{FirstScan: true, New: current}, err
+	}
+	if baseline.UpdatedAt.IsZero() {
+		return FindingDelta{FirstScan: true, New: current}, nil
+	}
+
+	baselineSet := make(map[string]struct{}, len(baseline.Fingerprints))
+	for _, fp := range baseline.Fingerprints {
+		baselineSet[fp] = struct{}{}
+	}
+
+	delta := FindingDelta{}
+	for _, fp := range current {
+		if _, ok := baselineSet[fp]; !ok {
+			delta.New = append(delta.New, fp)
+		}
+	}
+	for _, fp := range baseline.Fingerprints {
+		if _, ok := currentSet[fp]; !ok {
+			delta.Resolved = append(delta.Resolved, fp)
+		}
+	}
+	return delta, nil
+}
+
+func (d *DB) SetFindingBaseline(projectID string, fingerprints []string) error {
+	baseline := FindingBaseline{Fingerprints: normalizeFingerprints(fingerprints), UpdatedAt: time.Now().UTC()}
+	data, err := json.Marshal(baseline)
+	if err != nil {
+		return err
+	}
+	return d.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(bucketFindings).Put(ProjectKey(projectID), data)
+	})
+}
+
+func normalizeFingerprints(fingerprints []string) []string {
+	seen := make(map[string]struct{}, len(fingerprints))
+	out := make([]string, 0, len(fingerprints))
+	for _, fp := range fingerprints {
+		fp = strings.TrimSpace(fp)
+		if fp == "" {
+			continue
+		}
+		if _, ok := seen[fp]; ok {
+			continue
+		}
+		seen[fp] = struct{}{}
+		out = append(out, fp)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // PruneOlderThan deletes file records not scanned within the given duration (e.g. 90 days).

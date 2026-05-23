@@ -297,6 +297,7 @@
 
 ## Phase 2 — Backlog
 > Do not start before Phase 1 stays stable after partner/customer feedback.
+> Handoff 2026-05-23 from platform repo `D:\Ngoprek\ngulik\BataraSec` branch `feat/next-features-p2-k8s`: next requested agent-Go-first work is loaded kernel modules audit, Lynis/OpenSCAP CIS checks, and differential report. Keep platform changes limited to API/UI compatibility follow-up only if the agent payload needs it.
 
 ### [CORE] Platform-triggered agent uninstall
 - **Main task**: Phase 2 — Backlog
@@ -320,15 +321,15 @@
 - **Done when**: Agent can be installed/enrolled with custom paths, and both `scan` and `watch` use those paths correctly.
 - **Evidence**: `scripts/install.sh`, `cmd/batarasec-agent/enroll.go`, `scan.go`, `watch.go`.
 
-### [AGENT-P2] Hardening checks
+### [AGENT-P2] Lynis/OpenSCAP CIS checks
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-01
 - **Owner**: Yudhistira
 - **Status**: backlog
 - **Priority**: P2
 - **Est**: ~4 jam
-- **Scope**: Add SSH, firewall, permissions, world-writable files, and critical file checks.
-- **Done when**: Hardening findings are emitted with remediation and severity.
+- **Scope**: Detect Lynis/OpenSCAP availability, run safe non-interactive CIS-style checks with timeouts, parse reports into unified posture findings with ruleId/evidence/severity/remediation. Prefer Lynis first if both tools are too large for one pass.
+- **Done when**: CIS findings from Lynis/OpenSCAP are emitted as posture findings and displayed by the platform without breaking existing hardening_lite output.
 
 ### [AGENT-P2] Docker/container runtime audit
 - **Main task**: Phase 2 — Backlog
@@ -352,15 +353,15 @@
 - **Scope**: Baseline hashes for critical files and report unexpected changes.
 - **Done when**: Changes to critical system files are detected between scans.
 
-### [AGENT-P2] Process baseline & suspicious binary detection
+### [AGENT-P2] Loaded kernel modules audit
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-04
 - **Owner**: Yudhistira
 - **Status**: backlog
 - **Priority**: P2
-- **Est**: ~2 jam
-- **Scope**: Flag processes running from temp dirs and binaries without package ownership.
-- **Done when**: Suspicious processes are reported with evidence.
+- **Est**: ~1.5 jam
+- **Scope**: Collect `lsmod`, enrich modules with `modinfo`, check package ownership with `dpkg -S` or `rpm -qf` when available, and flag unsigned/unknown/suspicious modules as posture findings. Use strict command timeouts and skip gracefully when commands are unavailable.
+- **Done when**: Unsigned, unknown, or suspicious kernel modules are reported with evidence and normal distro modules do not create noisy false positives.
 
 ### [AGENT-P2] Windows agent
 - **Main task**: Phase 2 — Backlog
@@ -419,8 +420,8 @@
 - **Status**: backlog
 - **Priority**: P2
 - **Est**: ~3 jam
-- **Scope**: Send only new/resolved findings after first full baseline.
-- **Done when**: Follow-up scans send much smaller payloads while server state remains accurate.
+- **Scope**: Send a full baseline on first scan, then send only new/resolved findings on follow-up scans when the platform supports delta merge. Keep a full-report fallback for incompatible servers or cache reset.
+- **Done when**: Follow-up scans send much smaller payloads while server state remains accurate, and first scan/server-incompatible cases still work with full reports.
 
 ---
 

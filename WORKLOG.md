@@ -51,5 +51,6 @@
 - Built binaries and `dist/` are local artifacts; do not commit them unless preparing a formal release artifact commit/tag.
 
 ## Next Step
-- Commit and push Phase 1 stabilization/docs changes from this repo.
-- Next feature work should be driven from the BataraSec monorepo TODO: Windows PowerShell install command (`QW-02`) or agent detail/rescan UI (`LRG-12`).
+- Start a fresh Claude Code session from `D:\Ngoprek\ngulik\batarasec-agent` for Agent Phase 2 implementation.
+- Requested next P2 tasks: AP2-04 Loaded kernel modules audit, AP2-01 Lynis/OpenSCAP CIS checks, and AP2-10 Differential report.
+- Before coding, inspect existing scan/report payload patterns and confirm whether the platform API already accepts the required posture findings or delta payload shape.

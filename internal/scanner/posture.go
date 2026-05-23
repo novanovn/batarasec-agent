@@ -13,6 +13,8 @@ func RunPostureChecks() []findings.PostureFinding {
 	var result []findings.PostureFinding
 	result = append(result, checkSSHConfig()...)
 	result = append(result, checkDockerRuntime()...)
+	result = append(result, checkKernelModules()...)
+	result = append(result, checkCISTools()...)
 	return result
 }
 

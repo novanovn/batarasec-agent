@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,9 +127,28 @@ func executeScan(dryRun bool) (string, error) {
 	// Deduplicate findings by cve_id + package_name + version
 	allFindings = deduplicateFindings(allFindings)
 
+	fullVulnerabilitySnapshot := shouldUpdateVulnerabilityBaseline(scanFullScan || fullScanOverride, len(results), len(changedFiles))
+	fingerprints := vulnerabilityFingerprints(cfg.ProjectID, allFindings)
+	findingDelta := cache.FindingDelta{}
+	if fullVulnerabilitySnapshot {
+		findingDelta, err = db.FindingDelta(cfg.ProjectID, fingerprints)
+		if err != nil {
+			log.Warn("finding delta check failed, using full report", zap.Error(err))
+		}
+	} else {
+		log.Info("vulnerability delta baseline skipped because scan used partial manifest delta",
+			zap.Int("manifests", len(results)),
+			zap.Int("changed_files", len(changedFiles)),
+		)
+	}
+
 	log.Info("delta detection complete",
 		zap.Int("changed_files", len(changedFiles)),
 		zap.Int("findings", len(allFindings)),
+		zap.Bool("full_vulnerability_snapshot", fullVulnerabilitySnapshot),
+		zap.Bool("first_finding_baseline", findingDelta.FirstScan),
+		zap.Int("new_finding_fingerprints", len(findingDelta.New)),
+		zap.Int("resolved_finding_fingerprints", len(findingDelta.Resolved)),
 	)
 
 	// Run posture/hardening checks.
@@ -156,6 +176,9 @@ func executeScan(dryRun bool) (string, error) {
 	} else {
 		for _, r := range changedFiles {
 			_ = db.MarkScanned(cfg.ProjectID, r.FilePath, r.ContentHash)
+		}
+		if fullVulnerabilitySnapshot {
+			_ = db.SetFindingBaseline(cfg.ProjectID, fingerprints)
 		}
 	}
 
@@ -299,4 +322,21 @@ func deduplicateFindings(fs []findings.Finding) []findings.Finding {
 		}
 	}
 	return result
+}
+
+func vulnerabilityFingerprints(projectID string, fs []findings.Finding) []string {
+	fingerprints := make([]string, 0, len(fs))
+	for _, f := range fs {
+		fingerprints = append(fingerprints, vulnerabilityFingerprint(projectID, f))
+	}
+	return fingerprints
+}
+
+func shouldUpdateVulnerabilityBaseline(fullScan bool, manifestCount, changedCount int) bool {
+	return fullScan || manifestCount == changedCount
+}
+
+func vulnerabilityFingerprint(projectID string, f findings.Finding) string {
+	sum := sha1.Sum([]byte(projectID + "|agent|" + f.CVEID + "|" + f.PackageName + "|" + f.Ecosystem))
+	return fmt.Sprintf("%x", sum)
 }
