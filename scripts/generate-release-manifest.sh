@@ -22,9 +22,18 @@ asset_json() {
     return 0
   fi
 
-  local hash size
+  local hash size archive_path archive_hash archive_size
   hash=$(sha256sum "$path" | awk '{print $1}')
   size=$(wc -c < "$path" | tr -d ' ')
+  archive_path="${path}.tar.gz"
+
+  if [ -f "$archive_path" ]; then
+    archive_hash=$(sha256sum "$archive_path" | awk '{print $1}')
+    archive_size=$(wc -c < "$archive_path" | tr -d ' ')
+    printf '{"os":"%s","arch":"%s","filename":"%s","url":"%s/%s","sha256":"%s","sizeBytes":%s,"archiveUrl":"%s/%s.tar.gz","archiveSha256":"%s","archiveSizeBytes":%s}' \
+      "$os" "$arch" "$filename" "$BASE_URL" "$filename" "$hash" "$size" "$BASE_URL" "$filename" "$archive_hash" "$archive_size"
+    return 0
+  fi
 
   printf '{"os":"%s","arch":"%s","filename":"%s","url":"%s/%s","sha256":"%s","sizeBytes":%s}' \
     "$os" "$arch" "$filename" "$BASE_URL" "$filename" "$hash" "$size"
