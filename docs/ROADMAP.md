@@ -1,6 +1,6 @@
 # batarasec-agent — Roadmap
 
-> Last updated: 2026-05-15
+> Last updated: 2026-05-25
 
 ---
 
@@ -169,12 +169,14 @@ Detect suspicious cron jobs.
 ## Distribution follow-up — GitHub Releases manifest
 
 **Goal**: Publish official agent binaries through GitHub Releases so BataraSec Platform can sync artifacts without requiring MinIO.
-**Status**: Backlog after platform LRG-26 validation.
+**Status**: Done for raw + `.tar.gz` release assets; platform staging/user install validated 2026-05-25.
 
 - Generate `manifest.json` as a GitHub release asset.
-- Use `githubReleases[].assets[]` with `version`, `releaseDate`, `channel`, `releaseNotes`, per-platform filename, URL, SHA256, and sizeBytes.
+- Use `githubReleases[].assets[]` with `version`, `releaseDate`, `channel`, `releaseNotes`, per-platform filename, URL, SHA256, sizeBytes, and optional archive metadata.
+- Publish raw binaries for backward compatibility and `.tar.gz` archives for easier release distribution: `batarasec-agent_linux_amd64`, `batarasec-agent_linux_amd64.tar.gz`, `batarasec-agent_linux_arm64`, `batarasec-agent_linux_arm64.tar.gz`, and future Windows equivalents.
 - Keep binary filenames aligned with platform expectations: `batarasec-agent_linux_amd64`, `batarasec-agent_linux_arm64`, and future `batarasec-agent_windows_amd64.exe`.
-- Platform validation confirmed in `D:\Ngoprek\ngulik\BataraSec` commit `1c07a5d`.
+- Platform validation confirmed in `D:\Ngoprek\ngulik\BataraSec` commits `1c07a5d` and `176969c`: worker sync can consume manifests, Admin upload accepts `.tar.gz`, and runtime serves the extracted raw binary.
+- User manually confirmed installing the latest agent update from WSL staging succeeds after archive upload support.
 
 ---
 

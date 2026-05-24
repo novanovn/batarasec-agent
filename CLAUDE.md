@@ -11,7 +11,7 @@
   - **Logging**: `zap` (structured JSON)
   - **Local storage**: `bbolt` (embedded KV, no server)
   - **HTTP**: stdlib `net/http` dengan custom transport
-  - **Build/release**: `goreleaser`
+  - **Build/release**: `goreleaser` (raw binaries plus `.tar.gz` release archives)
 
   ## Struktur Folder
   batarasec-agent/
@@ -45,6 +45,12 @@
   - `linux/arm64`
   - Binary size target: <20MB
   - Zero external runtime dependency (pure static binary)
+
+  ## Release Artifacts
+  - GoReleaser publishes raw binaries such as `batarasec-agent_linux_amd64` for backward compatibility.
+  - GoReleaser also publishes `.tar.gz` archives such as `batarasec-agent_linux_amd64.tar.gz`; each archive must contain only the expected binary.
+  - Release manifests preserve raw `url`/`sha256`/`sizeBytes` fields and add optional `archiveUrl`/`archiveSha256`/`archiveSizeBytes` when archives exist.
+  - Do not commit generated binaries, `.tar.gz` files, or `dist/manifest*.json` unless preparing an explicit formal release artifact commit/tag.
 
   ## Cara Agent Bekerja
   1. Scan manifest files (package-lock.json, go.sum, requirements.txt, dll)

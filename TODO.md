@@ -1,6 +1,6 @@
 # batarasec-agent — TODO
 > Managed by: **Bisma/Yudhistira**
-> Last updated: 2026-05-24
+> Last updated: 2026-05-25
 > Phase 1: Direct mode only (no relay)
 
 ---
@@ -205,13 +205,14 @@
 - **Owner**: Yudhistira + VmAgent
 - **Status**: done
 - **Worked**: 2026-05-24 — added `scripts/generate-release-manifest.sh` and `make manifest` for GitHub Releases-compatible `manifest.json` generation.
+- **Worked**: 2026-05-25 — added GoReleaser `.tar.gz` archives alongside raw binaries and manifest archive metadata (`archiveUrl`, `archiveSha256`, `archiveSizeBytes`) while preserving raw binary fields for older platforms.
 - **Priority**: P2
 - **Est**: ~2 jam
-- **Depends on**: Platform LRG-26 validated in `D:\Ngoprek\ngulik\BataraSec` commit `1c07a5d`.
-- **Scope**: Publish release assets in GitHub Releases-compatible layout and generate `manifest.json` with `githubReleases[].assets[]` entries for Linux amd64/arm64 and future Windows amd64. Include `version`, `releaseDate`, `channel`, release notes, filename, URL, SHA256, and sizeBytes.
-- **Done when**: A tagged agent release exposes `manifest.json` plus binaries/checksums; BataraSec platform worker sync imports the manifest, validates checksum and ELF/PE magic, and caches the binary without requiring MinIO.
+- **Depends on**: Platform LRG-26 validated in `D:\Ngoprek\ngulik\BataraSec` commit `1c07a5d`; platform archive upload/sync validated in commit `176969c`.
+- **Scope**: Publish release assets in GitHub Releases-compatible layout and generate `manifest.json` with `githubReleases[].assets[]` entries for Linux amd64/arm64 and future Windows amd64. Include `version`, `releaseDate`, `channel`, release notes, filename, URL, SHA256, sizeBytes, and optional archive metadata for `.tar.gz` assets.
+- **Done when**: A tagged agent release exposes `manifest.json`, raw binaries, and `.tar.gz` archives; BataraSec platform worker sync imports the manifest, prefers archives when available, validates checksum and ELF/PE magic, and caches the extracted raw binary without requiring MinIO.
 - **Platform contract**: `AGENT_RELEASE_MANIFEST_URL=https://github.com/<org>/batarasec-agent/releases/latest/download/manifest.json`; asset URLs should point to GitHub release downloads; flat platform `releases[]` remains supported but official agent releases should use `githubReleases[].assets[]`.
-- **Testing gate**: PASS — `bash -n scripts/generate-release-manifest.sh`; temp-dist generator smoke produced valid JSON for `v1.2.3` with GitHub asset URL, SHA256, and sizeBytes; `go test ./...` passed. Generated `dist/manifest.json` artifact was removed and not intended for commit.
+- **Testing gate**: PASS — `bash -n scripts/generate-release-manifest.sh`; temp-dist generator smoke produced valid JSON for `v1.2.3` with GitHub asset URL, SHA256, and sizeBytes; `go test ./...` passed. Follow-up PASS: platform WSL staging commit `176969c` accepted `.tar.gz` Admin upload, stored extracted raw Linux binary with ELF magic `7f454c46`, and user manually confirmed latest agent install succeeds. Generated `dist/manifest*.json` and binary/archive artifacts are not intended for normal docs/source commits.
 
 ---
 
@@ -456,4 +457,4 @@
 | Distribution | Phase 1 done |
 | Phase 2 | Backlog |
 
-**Current note**: Phase 1 direct-mode agent verified on staging. AP2-01 (CIS/Lynis), AP2-04 (kernel modules), AP2-10 (delta baseline) implemented and verified on customer `192.168.132.233`. Lynis pipe-delimited parser improvement added 2026-05-23 for specific rule IDs (`LYNIS-FINT-4350`, etc.) instead of `LYNIS-GENERIC`.
+**Current note**: Phase 1 direct-mode agent verified on staging. DIST-03 now publishes raw binaries plus `.tar.gz` archives with manifest archive metadata, validated through platform WSL staging and user install on 2026-05-25. AP2-01 (CIS/Lynis), AP2-04 (kernel modules), AP2-10 (delta baseline) implemented and verified on customer `192.168.132.233`. Lynis pipe-delimited parser improvement added 2026-05-23 for specific rule IDs (`LYNIS-FINT-4350`, etc.) instead of `LYNIS-GENERIC`.
