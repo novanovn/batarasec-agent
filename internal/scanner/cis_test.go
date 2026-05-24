@@ -81,3 +81,50 @@ func TestCheckCISToolsSkipsWhenUnavailable(t *testing.T) {
 		t.Fatalf("expected no findings, got %d", len(findings))
 	}
 }
+
+func TestParseLynisValue(t *testing.T) {
+	tests := []struct {
+		input      string
+		wantRuleID string
+		wantDesc   string
+		wantDetail string
+	}{
+		{"FINT-4350|Install a file integrity tool to monitor changes|-|-|", "LYNIS-FINT-4350", "Install a file integrity tool to monitor changes", ""},
+		{"KRNL-5830|Check for available kernel updates|kernel update needed|-|", "LYNIS-KRNL-5830", "Check for available kernel updates", "kernel update needed"},
+		{"SSH root login allowed [SSH-7408]", "LYNIS-SSH-7408", "SSH root login allowed", ""},
+		{"generic text no marker", "LYNIS-GENERIC", "generic text no marker", ""},
+	}
+	for _, tt := range tests {
+		ruleID, desc, detail := parseLynisValue(tt.input)
+		if ruleID != tt.wantRuleID {
+			t.Errorf("input %q: ruleID = %q, want %q", tt.input, ruleID, tt.wantRuleID)
+		}
+		if desc != tt.wantDesc {
+			t.Errorf("input %q: desc = %q, want %q", tt.input, desc, tt.wantDesc)
+		}
+		if detail != tt.wantDetail {
+			t.Errorf("input %q: detail = %q, want %q", tt.input, detail, tt.wantDetail)
+		}
+	}
+}
+
+func TestParseLynisReportPipeFormat(t *testing.T) {
+	report := "suggestion[]=FINT-4350|Install a file integrity tool to monitor changes|-|-|\n" +
+		"warning[]=KRNL-5830|Check for available kernel updates|-|-|\n"
+	findings := parseLynisReport(report)
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(findings))
+	}
+	if findings[0].RuleID != "LYNIS-FINT-4350" {
+		t.Fatalf("expected LYNIS-FINT-4350, got %s", findings[0].RuleID)
+	}
+	if findings[0].Title != "Lynis suggestion: Install a file integrity tool to monitor changes" {
+		t.Fatalf("unexpected title: %s", findings[0].Title)
+	}
+	if findings[0].Severity != "low" {
+		t.Fatalf("expected low severity, got %s", findings[0].Severity)
+	}
+	if findings[1].RuleID != "LYNIS-KRNL-5830" || findings[1].Severity != "medium" {
+		t.Fatalf("unexpected warning: %#v", findings[1])
+	}
+}

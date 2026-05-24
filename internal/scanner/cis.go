@@ -16,6 +16,7 @@ import (
 const cisCommandTimeout = 2 * time.Minute
 
 var lynisSuggestionID = regexp.MustCompile(`\[([A-Z0-9-]+)\]`)
+var lynisRuleID = regexp.MustCompile(`^([A-Z0-9]+-[0-9]+)\|`)
 
 type fileReader func(string) ([]byte, error)
 type fileRemover func(string) error
@@ -50,6 +51,31 @@ func runLynis(run commandRunner, readFile fileReader, remove fileRemover, tempDi
 	return parseLynisReport(string(data))
 }
 
+// parseLynisValue handles two Lynis report formats:
+//   - Pipe-delimited: FINT-4350|description|detail|-|
+//   - Bracket:        some description text [SSH-7408]
+func parseLynisValue(value string) (ruleID, description, detail string) {
+	if match := lynisRuleID.FindStringSubmatch(value); len(match) == 2 {
+		ruleID = "LYNIS-" + match[1]
+		parts := strings.SplitN(value, "|", 4)
+		if len(parts) >= 2 {
+			description = strings.TrimSpace(parts[1])
+		}
+		if len(parts) >= 3 && parts[2] != "-" && parts[2] != "" {
+			detail = strings.TrimSpace(parts[2])
+		}
+		return
+	}
+	if match := lynisSuggestionID.FindStringSubmatch(value); len(match) == 2 {
+		ruleID = "LYNIS-" + match[1]
+		description = strings.TrimSpace(lynisSuggestionID.ReplaceAllString(value, ""))
+		return
+	}
+	ruleID = "LYNIS-GENERIC"
+	description = value
+	return
+}
+
 func parseLynisReport(report string) []findings.PostureFinding {
 	var posture []findings.PostureFinding
 	for _, line := range strings.Split(report, "\n") {
@@ -66,26 +92,23 @@ func parseLynisReport(report string) []findings.PostureFinding {
 			titlePrefix = "Lynis warning"
 		}
 
-		ruleID := "LYNIS-GENERIC"
-		if match := lynisSuggestionID.FindStringSubmatch(value); len(match) == 2 {
-			ruleID = "LYNIS-" + match[1]
+		ruleID, description, detail := parseLynisValue(value)
+		evidence := map[string]interface{}{"tool": "lynis", "report_line": value}
+		if detail != "" {
+			evidence["detail"] = detail
 		}
 
 		posture = append(posture, findings.PostureFinding{
 			RuleID:      ruleID,
 			Category:    "cis",
 			Severity:    severity,
-			Title:       titlePrefix + ": " + trimLynisMarker(value),
+			Title:       titlePrefix + ": " + description,
 			Description: "Lynis reported a CIS-style hardening issue.",
-			Evidence:    map[string]interface{}{"tool": "lynis", "report_line": value},
+			Evidence:    evidence,
 			Remediation: "Review the Lynis finding and apply the recommended hardening control where appropriate.",
 		})
 	}
 	return posture
-}
-
-func trimLynisMarker(value string) string {
-	return strings.TrimSpace(lynisSuggestionID.ReplaceAllString(value, ""))
 }
 
 func runOpenSCAP(run commandRunner) []findings.PostureFinding {
