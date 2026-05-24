@@ -166,6 +166,18 @@ Detect suspicious cron jobs.
 
 ---
 
+## Distribution follow-up — GitHub Releases manifest
+
+**Goal**: Publish official agent binaries through GitHub Releases so BataraSec Platform can sync artifacts without requiring MinIO.
+**Status**: Backlog after platform LRG-26 validation.
+
+- Generate `manifest.json` as a GitHub release asset.
+- Use `githubReleases[].assets[]` with `version`, `releaseDate`, `channel`, `releaseNotes`, per-platform filename, URL, SHA256, and sizeBytes.
+- Keep binary filenames aligned with platform expectations: `batarasec-agent_linux_amd64`, `batarasec-agent_linux_arm64`, and future `batarasec-agent_windows_amd64.exe`.
+- Platform validation confirmed in `D:\Ngoprek\ngulik\BataraSec` commit `1c07a5d`.
+
+---
+
 ## Phase 3 — Enterprise
 
 **Goal**: Full security platform untuk enterprise dan regulated industry  

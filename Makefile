@@ -13,7 +13,7 @@ BINARY = batarasec-agent
 MAIN   = ./cmd/batarasec-agent
 DIST   = dist
 
-.PHONY: build test lint install clean cross release
+.PHONY: build test lint install clean cross manifest release
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(MAIN)
@@ -33,9 +33,12 @@ clean:
 
 cross:
 	mkdir -p $(DIST)
-	CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)-linux-amd64 $(MAIN)
-	CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)-linux-arm64 $(MAIN)
-	sha256sum $(DIST)/$(BINARY)-* > $(DIST)/checksums.txt
+	CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)_linux_amd64 $(MAIN)
+	CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST)/$(BINARY)_linux_arm64 $(MAIN)
+	sha256sum $(DIST)/$(BINARY)_* > $(DIST)/checksums.txt
+
+manifest:
+	bash scripts/generate-release-manifest.sh
 
 release:
 	goreleaser release --clean

@@ -142,6 +142,33 @@ Lihat [ROADMAP.md](docs/ROADMAP.md) untuk detail lengkap.
 
 ---
 
+## Release manifest for BataraSec Platform
+
+Official agent releases should publish a GitHub Releases `manifest.json` asset. The BataraSec platform consumes this URL through `AGENT_RELEASE_MANIFEST_URL` and imports each platform asset into `agent_releases` after checksum and binary magic validation.
+
+```json
+{
+  "githubReleases": [
+    {
+      "version": "1.1.0",
+      "releaseDate": "2026-05-24T00:00:00Z",
+      "channel": "stable",
+      "releaseNotes": "Bug fixes and release notes.",
+      "assets": [
+        {
+          "os": "linux",
+          "arch": "amd64",
+          "filename": "batarasec-agent_linux_amd64",
+          "url": "https://github.com/<org>/batarasec-agent/releases/download/v1.1.0/batarasec-agent_linux_amd64",
+          "sha256": "<sha256-hex>",
+          "sizeBytes": 12680631
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Supported Platforms
 
 | OS | Arch | Status |

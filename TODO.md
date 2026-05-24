@@ -1,6 +1,6 @@
 # batarasec-agent — TODO
 > Managed by: **Bisma/Yudhistira**
-> Last updated: 2026-05-16
+> Last updated: 2026-05-24
 > Phase 1: Direct mode only (no relay)
 
 ---
@@ -199,6 +199,20 @@
 - **Done when**: Tagged release builds reproducible agent binaries.
 - **Evidence**: `Makefile`, release/build artifacts.
 
+### [DIST] GitHub Releases manifest artifacts
+- **Main task**: Phase 1 — Distribution
+- **Subtask**: DIST-03
+- **Owner**: Yudhistira + VmAgent
+- **Status**: done
+- **Worked**: 2026-05-24 — added `scripts/generate-release-manifest.sh` and `make manifest` for GitHub Releases-compatible `manifest.json` generation.
+- **Priority**: P2
+- **Est**: ~2 jam
+- **Depends on**: Platform LRG-26 validated in `D:\Ngoprek\ngulik\BataraSec` commit `1c07a5d`.
+- **Scope**: Publish release assets in GitHub Releases-compatible layout and generate `manifest.json` with `githubReleases[].assets[]` entries for Linux amd64/arm64 and future Windows amd64. Include `version`, `releaseDate`, `channel`, release notes, filename, URL, SHA256, and sizeBytes.
+- **Done when**: A tagged agent release exposes `manifest.json` plus binaries/checksums; BataraSec platform worker sync imports the manifest, validates checksum and ELF/PE magic, and caches the binary without requiring MinIO.
+- **Platform contract**: `AGENT_RELEASE_MANIFEST_URL=https://github.com/<org>/batarasec-agent/releases/latest/download/manifest.json`; asset URLs should point to GitHub release downloads; flat platform `releases[]` remains supported but official agent releases should use `githubReleases[].assets[]`.
+- **Testing gate**: PASS — `bash -n scripts/generate-release-manifest.sh`; temp-dist generator smoke produced valid JSON for `v1.2.3` with GitHub asset URL, SHA256, and sizeBytes; `go test ./...` passed. Generated `dist/manifest.json` artifact was removed and not intended for commit.
+
 ---
 
 ## Bug Fixes & Tech Debt
@@ -325,11 +339,14 @@
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-01
 - **Owner**: Yudhistira
-- **Status**: backlog
+- **Status**: done
 - **Priority**: P2
 - **Est**: ~4 jam
 - **Scope**: Detect Lynis/OpenSCAP availability, run safe non-interactive CIS-style checks with timeouts, parse reports into unified posture findings with ruleId/evidence/severity/remediation. Prefer Lynis first if both tools are too large for one pass.
 - **Done when**: CIS findings from Lynis/OpenSCAP are emitted as posture findings and displayed by the platform without breaking existing hardening_lite output.
+- **Worked**: 2026-05-23 — Implemented `checkCISTools()` in `internal/scanner/cis.go`. Lynis preferred, OpenSCAP fallback. Both use 2-minute timeout. Lynis: parses bracket `[SSH-7408]` and pipe `FINT-4350|desc|-|-|` formats. OpenSCAP: no `--fetch-remote-resources`. Verified on `awan-vm-bastion` customer: 56 LYNIS-* posture findings sent.
+- **Commit**: `2798159` feat: add AP2 posture checks and safe delta baseline
+- **Improvement**: 2026-05-23 — Added `parseLynisValue()` to handle pipe-delimited Lynis format (`FINT-4350|description|...`), producing specific rule IDs (e.g., `LYNIS-FINT-4350`) and clean titles instead of `LYNIS-GENERIC`. Tests added in `cis_test.go`.
 
 ### [AGENT-P2] Docker/container runtime audit
 - **Main task**: Phase 2 — Backlog
@@ -357,11 +374,13 @@
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-04
 - **Owner**: Yudhistira
-- **Status**: backlog
+- **Status**: done
 - **Priority**: P2
 - **Est**: ~1.5 jam
 - **Scope**: Collect `lsmod`, enrich modules with `modinfo`, check package ownership with `dpkg -S` or `rpm -qf` when available, and flag unsigned/unknown/suspicious modules as posture findings. Use strict command timeouts and skip gracefully when commands are unavailable.
 - **Done when**: Unsigned, unknown, or suspicious kernel modules are reported with evidence and normal distro modules do not create noisy false positives.
+- **Worked**: 2026-05-23 — Implemented `checkKernelModules()` in `internal/scanner/kernel.go`. Rules: KMOD-001 (suspicious name/path, high), KMOD-002 (missing modinfo metadata, medium), KMOD-003 (no package owner, medium), KMOD-004 (unsigned, low). Graceful skip when `lsmod` unavailable. Verified: no false positives on normal VM (expected behavior).
+- **Commit**: `2798159` feat: add AP2 posture checks and safe delta baseline
 
 ### [AGENT-P2] Windows agent
 - **Main task**: Phase 2 — Backlog
@@ -417,11 +436,13 @@
 - **Main task**: Phase 2 — Backlog
 - **Subtask**: AP2-10
 - **Owner**: Yudhistira
-- **Status**: backlog
+- **Status**: done
 - **Priority**: P2
 - **Est**: ~3 jam
 - **Scope**: Send a full baseline on first scan, then send only new/resolved findings on follow-up scans when the platform supports delta merge. Keep a full-report fallback for incompatible servers or cache reset.
 - **Done when**: Follow-up scans send much smaller payloads while server state remains accurate, and first scan/server-incompatible cases still work with full reports.
+- **Worked**: 2026-05-23 — Implemented `shouldUpdateVulnerabilityBaseline()` in `cmd/batarasec-agent/scan.go`. Partial/manifest-delta scans skip baseline update (returns false), preventing incorrect baseline from partial data. Full scans update baseline as before. Verified: log showed `"vulnerability delta baseline skipped because scan used partial manifest delta"` on partial scan.
+- **Commit**: `2798159` feat: add AP2 posture checks and safe delta baseline
 
 ---
 
@@ -435,4 +456,4 @@
 | Distribution | Phase 1 done |
 | Phase 2 | Backlog |
 
-**Current note**: Phase 1 direct-mode agent has been verified on staging. Platform management/UI work continues in the BataraSec monorepo.
+**Current note**: Phase 1 direct-mode agent verified on staging. AP2-01 (CIS/Lynis), AP2-04 (kernel modules), AP2-10 (delta baseline) implemented and verified on customer `192.168.132.233`. Lynis pipe-delimited parser improvement added 2026-05-23 for specific rule IDs (`LYNIS-FINT-4350`, etc.) instead of `LYNIS-GENERIC`.
